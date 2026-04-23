@@ -31,9 +31,12 @@ jobs:
 
       - name: Prepare static files
         run: |
+          ASSET_VERSION="${GITHUB_SHA::7}"
           mkdir -p _site
           cp -R assets _site/assets
-          cp index.html app.js styles.css _site/
+          cp index.html _site/
+          cp app.js styles.css _site/
+          perl -0pi -e "s#\\./styles\\.css(?:\\?v=[^\"]*)?#./styles.css?v=${ASSET_VERSION}#g; s#\\./app\\.js(?:\\?v=[^\"]*)?#./app.js?v=${ASSET_VERSION}#g" _site/index.html
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
