@@ -825,7 +825,7 @@ function preloadLikelyPersonaPreview() {
 }
 
 function warmPersonaPreviewImages() {
-  if (personaWarmStarted || !networkAllowsPersonaWarmup() || getAnsweredCount() < 6) return;
+  if (personaWarmStarted || !networkAllowsPersonaWarmup() || !getAnsweredCount()) return;
   personaWarmStarted = true;
 
   const likelyCode = buildType(calculateScores());
