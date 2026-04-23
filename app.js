@@ -705,12 +705,6 @@ const personaImages = {
   AENR: "./assets/personas/aenr-open-air-humanist.webp",
   AECP: "./assets/personas/aecp-action-truth-seeker.webp"
 };
-const personaPreviewImages = Object.fromEntries(
-  Object.entries(personaImages).map(([code, src]) => [
-    code,
-    src.replace("/personas/", "/personas-lite/").replace(".webp", ".jpg")
-  ])
-);
 
 const optionLabels = ["A", "B", "C"];
 const storageKey = "teacher-ti-state-v8";
@@ -751,7 +745,7 @@ let advanceTimer = null;
 let shareCardObjectUrl = null;
 let shareCardFilename = "";
 const imageAssetCache = new Map();
-let personaWarmStarted = false;
+let personaWarmToken = 0;
 
 function loadState() {
   const fallback = {
@@ -818,27 +812,88 @@ function scheduleIdleTask(callback) {
   window.setTimeout(callback, 180);
 }
 
-function preloadLikelyPersonaPreview() {
-  if (!getAnsweredCount()) return;
-  const likelyCode = buildType(calculateScores());
-  loadImageAsset(personaPreviewImages[likelyCode] || personaPreviewImages.ISCR).catch(() => {});
+function calculateRemainingAxisRange() {
+  const remaining = {};
+  getAxisEntries().forEach(([key]) => {
+    remaining[key] = 0;
+  });
+
+  state.answers.forEach((answer, index) => {
+    if (answer !== null) return;
+    getAxisEntries().forEach(([key]) => {
+      const maxImpact = questions[index].options.reduce(
+        (max, option) => Math.max(max, Math.abs(Number(option.impact[key]) || 0)),
+        0
+      );
+      remaining[key] += maxImpact;
+    });
+  });
+
+  return remaining;
 }
 
-function warmPersonaPreviewImages() {
-  if (personaWarmStarted || !networkAllowsPersonaWarmup() || !getAnsweredCount()) return;
-  personaWarmStarted = true;
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
 
-  const likelyCode = buildType(calculateScores());
-  const queue = [likelyCode, ...Object.keys(personaPreviewImages).filter((code) => code !== likelyCode)];
+function estimateAxisRightProbability(score, remainingRange) {
+  if (remainingRange <= 0) {
+    const goesRight =
+      score.total > 0 || (score.total === 0 && score.rightHits > score.leftHits);
+    return goesRight ? 0.99 : 0.01;
+  }
+
+  if (score.total > remainingRange) return 0.99;
+  if (score.total < -remainingRange) return 0.01;
+
+  const tieBias = (score.rightHits - score.leftHits) / ((score.rightHits + score.leftHits || 0) + 2);
+  const base = 0.5 + score.total / (2 * (remainingRange + 1));
+  return clamp(base + tieBias * 0.08, 0.04, 0.96);
+}
+
+function estimatePersonaPriority() {
+  const scores = calculateScores();
+  const remaining = calculateRemainingAxisRange();
+  const axisEntries = getAxisEntries();
+
+  return Object.keys(typeProfiles)
+    .map((code) => {
+      let probability = 1;
+      axisEntries.forEach(([key, axis], index) => {
+        const rightProbability = estimateAxisRightProbability(scores[key], remaining[key]);
+        const needsRight = code[index] === axis.right.code;
+        probability *= needsRight ? rightProbability : 1 - rightProbability;
+      });
+      return { code, probability };
+    })
+    .sort((left, right) => right.probability - left.probability)
+    .map((entry) => entry.code);
+}
+
+function preloadLikelyPersonaImage() {
+  if (!getAnsweredCount()) return;
+  const [likelyCode] = estimatePersonaPriority();
+  loadImageAsset(personaImages[likelyCode] || personaImages.ISCR).catch(() => {});
+}
+
+function warmPersonaImages() {
+  if (!networkAllowsPersonaWarmup() || !getAnsweredCount() || state.showingResult) return;
+
+  const queue = estimatePersonaPriority().filter((code) => !imageAssetCache.has(personaImages[code]));
+  if (!queue.length) return;
+
+  const token = ++personaWarmToken;
   let index = 0;
 
   const step = () => {
-    if (index >= queue.length) return;
-    const src = personaPreviewImages[queue[index]];
+    if (token !== personaWarmToken || state.showingResult || index >= queue.length) return;
+    const src = personaImages[queue[index]];
     index += 1;
-    loadImageAsset(src).catch(() => {}).finally(() => {
-      scheduleIdleTask(step);
-    });
+    loadImageAsset(src)
+      .catch(() => {})
+      .finally(() => {
+        scheduleIdleTask(step);
+      });
   };
 
   scheduleIdleTask(step);
@@ -941,8 +996,8 @@ function renderQuiz() {
   prevButton.disabled = state.current === 0;
 
   renderOptions(question);
-  preloadLikelyPersonaPreview();
-  warmPersonaPreviewImages();
+  preloadLikelyPersonaImage();
+  warmPersonaImages();
   saveState();
 }
 
@@ -1401,7 +1456,10 @@ function renderResult() {
   typeName.textContent = profile.englishName;
   typeCnName.textContent = profile.name;
   matchScore.textContent = `匹配度 ${match}%`;
-  personaImage.src = personaPreviewImages[code] || personaPreviewImages.ISCR;
+  personaWarmToken += 1;
+  const resultImageSrc = personaImages[code] || personaImages.ISCR;
+  loadImageAsset(resultImageSrc).catch(() => {});
+  personaImage.src = resultImageSrc;
   personaImage.alt = `${profile.name}角色设定图`;
   educatorKind.textContent = profile.kind;
   educatorName.textContent = profile.figure;
