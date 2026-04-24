@@ -632,7 +632,7 @@ const typeProfiles = {
     figure: "张桂梅",
     story: "张桂梅的匹配点是镇场、强结构、强托举、强打磨。这个类型不是温柔地说“算了”，而是把学生从困境里往外推：我心疼你，所以我更不能让你停在这里。",
     summary: "你很能接住学生，也很敢把他们推向更高处。你的爱不是减压毯，而是一盏一直亮着、也一直催人往前走的灯。",
-    note: "系统备注：你不是不近人情，你是把期待当成一种更硬的保护。心疼归心疼，题还是要做。",
+    note: "系统备注：你不是不近人情，你是把期待也当成一种保护。心疼是真的，推着他们往前走也是真的。",
     fitStudent: "最适合处境不容易、信心不够但还有一股劲儿的学生。你不会把困难浪漫化，只会把路照亮，再盯着他一步步往上走。",
     fitParent: "最喜欢你的家长，愿意信任高要求，也愿意配合吃苦。他们知道你严格不是针对孩子，而是在替孩子守住一条往上走的路。",
     share: "我测出 TeacherTI 是 ASCP｜THE LAMPBEARER DRILLMASTER（燃灯硬核托举者），原型人物是张桂梅。心疼你，所以更不能让你停在原地。"
@@ -1043,13 +1043,16 @@ function renderList(element, items) {
   element.innerHTML = items.map((item) => `<li>${item}</li>`).join("");
 }
 
-function renderSystemNote(summary, note) {
+function getSystemNoteText(profile) {
+  const note = profile.note.replace(/^系统备注[:：]\s*/, "");
+  return `系统备注：${profile.summary} ${note}`;
+}
+
+function renderSystemNote(profile) {
   systemNote.replaceChildren();
-  [summary, note].forEach((text) => {
-    const paragraph = document.createElement("p");
-    paragraph.textContent = text;
-    systemNote.append(paragraph);
-  });
+  const paragraph = document.createElement("p");
+  paragraph.textContent = getSystemNoteText(profile);
+  systemNote.append(paragraph);
 }
 
 function renderScoreBars(scores) {
@@ -1371,7 +1374,7 @@ async function createResultShareCardCanvas() {
   });
   y += educatorHeight + 34;
 
-  const noteText = `${profile.summary}\n${profile.note}`;
+  const noteText = getSystemNoteText(profile);
   const noteHeight = measureWrappedCanvasText(ctx, noteText, contentWidth - 52, 42, {
     size: 29,
     weight: 1000
@@ -1500,7 +1503,7 @@ function renderResult() {
   educatorKind.textContent = profile.kind;
   educatorName.textContent = profile.figure;
   educatorStory.textContent = profile.story;
-  renderSystemNote(profile.summary, profile.note);
+  renderSystemNote(profile);
   fitStudent.textContent = profile.fitStudent;
   fitParent.textContent = profile.fitParent;
 
